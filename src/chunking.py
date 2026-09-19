@@ -1,5 +1,5 @@
 import os, pathlib
-from pathlib import Path
+from pathlib import Path, PosixPath
 import re
 from src.models import MinimalSource
 import ast
@@ -84,10 +84,50 @@ def chunk_markdown(paths):
         # for c in item.group():
         #     print(c)
 
+def pack_statements(stmts, content, line_offset, lines, threshold=2000):
+    sub_chunks = []
+    current_texts = []
+    current_size = 0
+
+    for stmt in stmts:
+        stmt_start = line_offset[stmt.lineno - 1]
+        stmt_end = line_offset[stmt.end_lineno - 1] + len(lines[stmt.end_lineno - 1])
+        stmt_txt = content[stmt_start:stmt_end]
+        stmt_size = len(stmt_txt)
+        # stmt_name = getattr(stmt, 'name', 'Unnamed')
+        if stmt_size > threshold:
+            if hasattr(stmt, "body"):
+                if current_texts:
+                    sub_chunks.append(current_texts)
+                    current_texts = []
+                    current_size = 0
+                sub_chunks += pack_statements(stmt.body, content, line_offset, lines)
+            if hasattr(stmt, "orelse"):
+                if current_texts:
+                    sub_chunks.append(current_texts)
+                    current_texts = []
+                    current_size = 0
+                sub_chunks += pack_statements(stmt.orelse, content, line_offset, lines)
+            if hasattr(stmt, "body") or hasattr(stmt, "orelse"):
+                continue
+
+        #   print(f"OVERSIZED {type(stmt).__name__}: {stmt_name} [{stmt.lineno} : {stmt.end_lineno}] in {str(path)}")
+
+        if current_size + stmt_size > threshold and current_texts:
+            sub_chunks.append(current_texts)
+            current_texts = []
+            current_size = 0
+        current_texts.append(stmt_txt)
+        current_size += stmt_size
+
+    if current_texts:
+        sub_chunks.append(current_texts)
+    return sub_chunks
+
 
 def chunk_py(paths):
     chunks_out = []
-    for path in paths[:16]:
+    for path in paths:
         if path.suffix == ".py":
             content = path.read_text(encoding="utf-8")
             tree = ast.parse(content)
@@ -102,20 +142,31 @@ def chunk_py(paths):
                 if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                     start_index = line_offset[node.lineno - 1]
                     end_index = line_offset[node.end_lineno - 1] + len(lines[node.end_lineno - 1])
+
+                    if (end_index - start_index + 1) > 2000:
+                        sub_chunks = pack_statements(node.body, content, line_offset, lines)
+
+                        for c in sub_chunks:
+                            print("------chunk------")
+                            chunk = "\n".join(c)
+                            print(chunk)
+                        # print(f"OVERSIZED {type(node).__name__}: {node.name} in {str(path)}")
                     chunks_out.append(MinimalSource(
                         file_path=str(path),
                         first_character_index=start_index,
                         last_character_index=end_index
                     ))
-            for chunk in chunks_out[:5]:
-                print("---")
-                print(content[chunk.first_character_index:chunk.last_character_index])
+                    # for chunk in chunks_out:
+                    #     print("---")
+                    #     print(content[chunk.first_character_index:chunk.last_character_index])
     return chunks_out
 
 
 paths = file_discovery(raw_dir)
 
 # chunk_markdown(paths)
+
+paths = [Path('data/raw/vllm-0.10.1/benchmarks/benchmark_serving_structured_output.py')]
 
 chunk_py(paths)
 
