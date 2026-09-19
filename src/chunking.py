@@ -87,42 +87,29 @@ def chunk_markdown(paths):
 
 def chunk_py(paths):
     chunks_out = []
-    for path in paths[:3]:
+    for path in paths[:16]:
         if path.suffix == ".py":
             content = path.read_text(encoding="utf-8")
             tree = ast.parse(content)
 
-            print(ast.dump(tree, indent=4))
+            lines = content.split("\n")
+            line_offset = [0]
+            for line in lines[:-1]:
+                next_offset = line_offset[-1] + len(line) + 1
+                line_offset.append(next_offset)
 
-            # for node in tree.body:
-            #     if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            #         pass
-            #     print(node)
-                # if len(c) > 2000:
-                #     small_chunks = c.split("\n")
-                #     for c in small_chunks:
-                #         start_index = offset
-                #         end_index = offset + len(c)
-                #         offset = end_index + len("\n")
-                #         chunks_out.append(MinimalSource(
-                #             file_path=str(path),
-                #             first_character_index=start_index,
-                #             last_character_index=end_index
-                #         ))
-
-                # else:
-                #     start_index = offset
-                #     end_index = offset + len(c)
-                #     offset = end_index + len("\n\n")
-
-                #     chunks_out.append(MinimalSource(
-                #         file_path=str(path),
-                #         first_character_index=start_index,
-                #         last_character_index=end_index
-                #     ))
-            # for node in tree.body:
-            #     if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            #         print(f"{type(node).__name__}: {node.name}")
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                    start_index = line_offset[node.lineno - 1]
+                    end_index = line_offset[node.end_lineno - 1] + len(lines[node.end_lineno - 1])
+                    chunks_out.append(MinimalSource(
+                        file_path=str(path),
+                        first_character_index=start_index,
+                        last_character_index=end_index
+                    ))
+            for chunk in chunks_out[:5]:
+                print("---")
+                print(content[chunk.first_character_index:chunk.last_character_index])
     return chunks_out
 
 
