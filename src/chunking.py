@@ -28,6 +28,14 @@ def chunk_markdown(paths):
             content = path.read_text(encoding="utf-8")
             headers = list(re.finditer(r"^#{1,6}\s+.+$", content, re.MULTILINE))
 
+
+            if not headers:
+                chunks_out.append(MinimalSource(
+                    file_path=str(path),
+                    first_character_index=0,
+                    last_character_index=len(content)
+                ))
+
             for i in range(len(headers)):
                 if i == len(headers) - 1:
                     start_index = headers[i].start()
@@ -73,7 +81,7 @@ def chunk_markdown(paths):
             # for chunk in chunks_out[:5]:  # just check the first few
             #     print("---")
             #     print(content[chunk.first_character_index:chunk.last_character_index])
-            print(repr(content[382:383]))
+            # print(repr(content[382:383]))
     return chunks_out
                     # print(f"OVERSIZED: {path} chunk is {len(chunk)} chars")
 
@@ -83,49 +91,60 @@ def chunk_markdown(paths):
         # print(f"{path.name}: {item.start()} [{item.span()[0]}: {item.span()[1]}]")
         # for c in item.group():
         #     print(c)
-
-def pack_statements(stmts, content, line_offset, lines, threshold=2000):
+ignored = 0
+processed = 0
+def pack_statements(stmts, content, line_offset, lines, path, threshold=2000):
+    global processed
+    global ignored
     sub_chunks = []
     current_texts = []
-    current_size = 0
+    current_start = None
+    current_end = None
 
     for stmt in stmts:
         stmt_start = line_offset[stmt.lineno - 1]
         stmt_end = line_offset[stmt.end_lineno - 1] + len(lines[stmt.end_lineno - 1])
         stmt_txt = content[stmt_start:stmt_end]
         stmt_size = len(stmt_txt)
-        # stmt_name = getattr(stmt, 'name', 'Unnamed')
+        stmt_name = getattr(stmt, 'name', 'Unnamed')
         if stmt_size > threshold:
             if hasattr(stmt, "body"):
                 if current_texts:
-                    sub_chunks.append(current_texts)
+                    sub_chunks.append((current_start, current_end))
                     current_texts = []
-                    current_size = 0
-                sub_chunks += pack_statements(stmt.body, content, line_offset, lines)
+                sub_chunks += pack_statements(stmt.body, content, line_offset, lines, path, threshold=threshold)
             if hasattr(stmt, "orelse"):
                 if current_texts:
-                    sub_chunks.append(current_texts)
+                    sub_chunks.append((current_start, current_end))
                     current_texts = []
-                    current_size = 0
-                sub_chunks += pack_statements(stmt.orelse, content, line_offset, lines)
+                sub_chunks += pack_statements(stmt.orelse, content, line_offset, lines, path, threshold=threshold)
             if hasattr(stmt, "body") or hasattr(stmt, "orelse"):
+                processed += 1
+                continue
+            else:
+                # print(f"OVERSIZED {type(stmt).__name__}: {stmt_name} [{stmt.lineno} : {stmt.end_lineno}] path:{path}")
+                ignored += 1
+                processed += 1
                 continue
 
-        #   print(f"OVERSIZED {type(stmt).__name__}: {stmt_name} [{stmt.lineno} : {stmt.end_lineno}] in {str(path)}")
-
-        if current_size + stmt_size > threshold and current_texts:
-            sub_chunks.append(current_texts)
+        if current_texts and (stmt_end - current_start) > threshold:
+            sub_chunks.append((current_start, current_end))
             current_texts = []
-            current_size = 0
+        if not current_texts:
+            current_start = stmt_start
+
+        current_end = stmt_end
         current_texts.append(stmt_txt)
-        current_size += stmt_size
+        processed += 1
 
     if current_texts:
-        sub_chunks.append(current_texts)
+        sub_chunks.append((current_start, current_end))
     return sub_chunks
 
 
-def chunk_py(paths):
+def chunk_py(paths, threshold=2000):
+    global processed
+    global ignored
     chunks_out = []
     for path in paths:
         if path.suffix == ".py":
@@ -139,26 +158,30 @@ def chunk_py(paths):
                 line_offset.append(next_offset)
 
             for node in tree.body:
-                if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)):
                     start_index = line_offset[node.lineno - 1]
                     end_index = line_offset[node.end_lineno - 1] + len(lines[node.end_lineno - 1])
 
-                    if (end_index - start_index + 1) > 2000:
-                        sub_chunks = pack_statements(node.body, content, line_offset, lines)
+                    if (end_index - start_index) > threshold:
+                        sub_chunks = pack_statements(node.body, content, line_offset, lines, path, threshold=threshold)
 
-                        for c in sub_chunks:
-                            print("------chunk------")
-                            chunk = "\n".join(c)
-                            print(chunk)
+                        for start_index, end_index in sub_chunks:
+                            chunks_out.append(MinimalSource(
+                                file_path=str(path),
+                                first_character_index=start_index,
+                                last_character_index=end_index
+                            ))
                         # print(f"OVERSIZED {type(node).__name__}: {node.name} in {str(path)}")
-                    chunks_out.append(MinimalSource(
-                        file_path=str(path),
-                        first_character_index=start_index,
-                        last_character_index=end_index
-                    ))
+                    else:
+                        chunks_out.append(MinimalSource(
+                            file_path=str(path),
+                            first_character_index=start_index,
+                            last_character_index=end_index
+                        ))
                     # for chunk in chunks_out:
                     #     print("---")
                     #     print(content[chunk.first_character_index:chunk.last_character_index])
+        # print(f"{ignored} oversized leaves out of {processed} statements")
     return chunks_out
 
 
@@ -166,9 +189,39 @@ paths = file_discovery(raw_dir)
 
 # chunk_markdown(paths)
 
-paths = [Path('data/raw/vllm-0.10.1/benchmarks/benchmark_serving_structured_output.py')]
+# paths = [Path('data/raw/vllm-0.10.1/benchmarks/benchmark_serving_structured_output.py')]
 
-chunk_py(paths)
+py_chunks = chunk_py(paths)
+m_chunks = chunk_markdown(paths)
+
+print("Python chunk count:", len(py_chunks))
+print("Markdown chunk count:", len(m_chunks))
+
+oversized = []
+
+for source in (py_chunks + m_chunks):
+    if source.last_character_index - source.first_character_index > 2000:
+        oversized.append(f"{source.file_path}[{source.first_character_index}:{source.last_character_index}]")
+
+res = "\n".join(oversized) or "nothing"
+print("Oversized chunks:", res)
+
+all_python_files = {str(path) for path in paths if path.suffix == ".py"}
+chunked_python_files = {chunk.file_path for chunk in py_chunks}
+
+missing_python_files = all_python_files - chunked_python_files
+
+print(f"Missing python files: {[path for path in missing_python_files][:10]}")
+
+# print(f"Missing python files: {[f"content for {path}: {open(path, "r").read()}" for path in missing_python_files][:10]}")
+
+# all_markdown_files = {str(path) for path in paths if path.suffix == ".md"}
+# chunked_markdown_files = {chunk.file_path for chunk in m_chunks}
+
+# missing_markdown_files = all_markdown_files - chunked_markdown_files
+
+# print(f"Missing Markdown files: {[f"content_length for {path}: {len((open(path, "r")).read())}" for path in missing_markdown_files]}")
+
 
 # text = "AAAA\nBBBB\nCCCC"
 # print(text.splitlines())
