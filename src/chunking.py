@@ -3,6 +3,7 @@ from pathlib import Path, PosixPath
 import re
 from src.models import MinimalSource
 import ast
+from src.indexer import tokenize_text, InvertedIndex
 
 
 RAW_DIR = "data/raw"
@@ -50,12 +51,21 @@ def chunk_markdown(paths):
                     chunks = chunk.split("\n\n")
                     offset = headers[i].start()
                     for c in chunks:
+                        start_index = offset
+                        paragraph_start = offset
+                        end_index = offset + len(c)
+                        offset = end_index + len("\n\n")
+                        if not c:
+                            continue
                         if len(c) > 2000:
                             small_chunks = c.split("\n")
+                            line_offset = paragraph_start
                             for c in small_chunks:
-                                start_index = offset
-                                end_index = offset + len(c)
-                                offset = end_index + len("\n")
+                                start_index = line_offset
+                                end_index = line_offset + len(c)
+                                line_offset = end_index + len("\n")
+                                if not c:
+                                    continue
                                 chunks_out.append(MinimalSource(
                                     file_path=str(path),
                                     first_character_index=start_index,
@@ -63,9 +73,6 @@ def chunk_markdown(paths):
                                 ))
 
                         else:
-                            start_index = offset
-                            end_index = offset + len(c)
-                            offset = end_index + len("\n\n")
 
                             chunks_out.append(MinimalSource(
                                 file_path=str(path),
@@ -193,25 +200,61 @@ paths = file_discovery(raw_dir)
 
 py_chunks = chunk_py(paths)
 m_chunks = chunk_markdown(paths)
+chunks = py_chunks + m_chunks
 
-print("Python chunk count:", len(py_chunks))
-print("Markdown chunk count:", len(m_chunks))
+# print("Python chunk count:", len(py_chunks))
+# print("Markdown chunk count:", len(m_chunks))
 
 oversized = []
 
-for source in (py_chunks + m_chunks):
-    if source.last_character_index - source.first_character_index > 2000:
-        oversized.append(f"{source.file_path}[{source.first_character_index}:{source.last_character_index}]")
+# for source in chunks:
+#     if source.last_character_index - source.first_character_index > 2000:
+#         oversized.append(f"{source.file_path}[{source.first_character_index}:{source.last_character_index}]")
 
 res = "\n".join(oversized) or "nothing"
 print("Oversized chunks:", res)
+
+from collections import defaultdict
+
+docmap: dict = defaultdict(dict)
+
+for chunk in chunks:
+    docmap[f"{chunk.file_path}::{chunk.first_character_index}_{chunk.last_character_index}"]["file_path"] = chunk.file_path
+    docmap[f"{chunk.file_path}::{chunk.first_character_index}_{chunk.last_character_index}"]["first_character_index"] = chunk.first_character_index
+    docmap[f"{chunk.file_path}::{chunk.first_character_index}_{chunk.last_character_index}"]["last_character_index"] = chunk.last_character_index
+    docmap[f"{chunk.file_path}::{chunk.first_character_index}_{chunk.last_character_index}"]["content"] = open(chunk.file_path, "r", encoding="utf-8").read()[chunk.first_character_index:chunk.last_character_index]
+
+corpus = {}
+
+for chunk_id, source in docmap.items():
+    tokens = tokenize_text(source["content"])
+
+    if tokens:
+        corpus[chunk_id] = tokens
+# for k, v in three_entries.items():
+#     print("--------------------------------------------")
+#     print(k)
+#     print(v[:10])
+# print(docmap[f"{chunks[0].file_path}::{chunks[0].first_character_index}_{chunks[0].last_character_index}"])
+
+# print("docmap entries:", len(docmap))
+# print("real corpus entries:", len(corpus))
+
+# empty_tokenized_chunks = [
+#     chunk_id
+#     for chunk_id, tokens in corpus.items()
+#     if not tokens
+# ]
+
+# print("empty tokenized chunks:", len(empty_tokenized_chunks))
+
 
 all_python_files = {str(path) for path in paths if path.suffix == ".py"}
 chunked_python_files = {chunk.file_path for chunk in py_chunks}
 
 missing_python_files = all_python_files - chunked_python_files
 
-print(f"Missing python files: {[path for path in missing_python_files][:10]}")
+# print(f"Missing python files: {[path for path in missing_python_files][:10]}")
 
 # print(f"Missing python files: {[f"content for {path}: {open(path, "r").read()}" for path in missing_python_files][:10]}")
 
@@ -223,11 +266,22 @@ print(f"Missing python files: {[path for path in missing_python_files][:10]}")
 # print(f"Missing Markdown files: {[f"content_length for {path}: {len((open(path, "r")).read())}" for path in missing_markdown_files]}")
 
 
-# text = "AAAA\nBBBB\nCCCC"
-# print(text.splitlines())
+index = InvertedIndex()
+index.build(corpus)
 
-# tree = ast.parse(source)
+print("IDF terms:", len(index.idf))
+print("Indexed terms:", len(index.inverted_index))
+print("Document norms:", len(index.document_norms))
 
-# for node in ast.walk(tree):
-#     if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-#         print(f"{type(node).__name__}: {node.name}, lines {node.lineno}-{node.end_lineno}")
+query = "KV cache manager"
+
+query_tokens = tokenize_text(query)
+
+print("query tokens:", query_tokens)
+
+results = index.search(query_tokens, k=5)
+
+for chunk_id, score in results:
+    print("\nSCORE:", score)
+    print("CHUNK:", chunk_id)
+    print(docmap[chunk_id]["content"][:500])
