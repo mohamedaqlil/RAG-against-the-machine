@@ -203,44 +203,46 @@ def cosine_similarity(query, document):
     return dot_product(query, document) / (vector_magnitude(query) * vector_magnitude(document))
 
 
-query = ["cach", "manag"]
+if "__name__" == "__main__":
 
-idf = inverse_document_frequency(corpus)
+    query = ["cach", "manag"]
 
-query_vector = tf_idf(query, idf)
-scores = []
+    idf = inverse_document_frequency(corpus)
 
-for doc_id, tokens in corpus.items():
-    scores.append((doc_id, cosine_similarity(query_vector, tf_idf(tokens, idf))))
+    query_vector = tf_idf(query, idf)
+    scores = []
 
-scores = sorted(scores, key=lambda score: score[1], reverse=True)
-# print(scores[:2])
+    for doc_id, tokens in corpus.items():
+        scores.append((doc_id, cosine_similarity(query_vector, tf_idf(tokens, idf))))
 
-index = InvertedIndex()
-index.build(corpus)
+    scores = sorted(scores, key=lambda score: score[1], reverse=True)
+    # print(scores[:2])
 
-print(index.search(["cach", "manag"], k=2))
-print(index.search(["attent", "schedul"], k=2))
-print(index.search(["unknown"], k=2))
-print(index.search(["unknown", "cach", "manag"], k=2))
+    index = InvertedIndex()
+    index.build(corpus)
 
-# print(index.idf)
-# print(dict(index.inverted_index))
-# print(index.document_norms)
+    print(index.search(["cach", "manag"], k=2))
+    print(index.search(["attent", "schedul"], k=2))
+    print(index.search(["unknown"], k=2))
+    print(index.search(["unknown", "cach", "manag"], k=2))
 
-# print(index.inverted_index["cach"])
-# print(index.inverted_index["manag"])
+    # print(index.idf)
+    # print(dict(index.inverted_index))
+    # print(index.document_norms)
 
-dot_scores = defaultdict(float)
+    # print(index.inverted_index["cach"])
+    # print(index.inverted_index["manag"])
 
-for term, query_weight in query_vector.items():
-    for doc_id in index.inverted_index[term]:
-        dot_scores[doc_id] += (query_weight * index.inverted_index[term][doc_id])
+    dot_scores = defaultdict(float)
 
-query_norm = vector_magnitude(query_vector)
-cosine_scores = defaultdict(float)
+    for term, query_weight in query_vector.items():
+        for doc_id in index.inverted_index[term]:
+            dot_scores[doc_id] += (query_weight * index.inverted_index[term][doc_id])
 
-for doc_id in dot_scores:
-    cosine_scores[doc_id] = dot_scores[doc_id] / (query_norm * index.document_norms[doc_id])
+    query_norm = vector_magnitude(query_vector)
+    cosine_scores = defaultdict(float)
 
-cosine_scores = sorted(cosine_scores.items(), key=lambda item: item[1], reverse=True)
+    for doc_id in dot_scores:
+        cosine_scores[doc_id] = dot_scores[doc_id] / (query_norm * index.document_norms[doc_id])
+
+    cosine_scores = sorted(cosine_scores.items(), key=lambda item: item[1], reverse=True)

@@ -1,4 +1,4 @@
-import os, pathlib
+import os, pathlib, json
 from pathlib import Path, PosixPath
 import re
 from src.models import MinimalSource
@@ -212,7 +212,7 @@ oversized = []
 #         oversized.append(f"{source.file_path}[{source.first_character_index}:{source.last_character_index}]")
 
 res = "\n".join(oversized) or "nothing"
-print("Oversized chunks:", res)
+# print("Oversized chunks:", res)
 
 from collections import defaultdict
 
@@ -272,16 +272,268 @@ index.build(corpus)
 print("IDF terms:", len(index.idf))
 print("Indexed terms:", len(index.inverted_index))
 print("Document norms:", len(index.document_norms))
+print()
+print()
 
-query = "KV cache manager"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CODE_PATH = os.path.join(PROJECT_ROOT, "datasets_public", "public", "AnsweredQuestions", "dataset_code_public.json")
+DOCS_PATH = os.path.join(PROJECT_ROOT, "datasets_public", "public", "AnsweredQuestions", "dataset_docs_public.json")
 
-query_tokens = tokenize_text(query)
+with open(CODE_PATH, "r", encoding="utf-8") as f:
+    code_eval = json.load(f)
 
-print("query tokens:", query_tokens)
+with open(DOCS_PATH, "r", encoding="utf-8") as f:
+    docs_eval = json.load(f)
 
-results = index.search(query_tokens, k=5)
+code_questions = code_eval["rag_questions"]
+docs_questions = docs_eval["rag_questions"]
 
-for chunk_id, score in results:
-    print("\nSCORE:", score)
-    print("CHUNK:", chunk_id)
-    print(docmap[chunk_id]["content"][:500])
+# for name, questions in [
+#     ("code", code_questions),
+#     ("docs", docs_questions)
+# ]:
+#     counts = {}
+
+#     for question in questions:
+#         n = len(question["sources"])
+#         counts[n] = counts.get(n, 0) + 1
+
+#     print(name, counts)
+
+
+from src.evaluation import ranges_overlap
+
+
+def hit_at_k(question, index, docmap, k=5):
+    reference = question["sources"][0]
+
+    ref_file = reference["file_path"]
+    ref_start = reference["first_character_index"]
+    ref_end = reference["last_character_index"]
+
+    query_tokens = tokenize_text(question["question"])
+    results = index.search(query_tokens, k=k)
+    for chunk_id, score in results:
+        source = docmap[chunk_id]
+
+        if source["file_path"] == ref_file:
+            if ranges_overlap(ref_start, ref_end, source["first_character_index"], source["last_character_index"]):
+                return True
+    return False
+
+# print("Question:", question["question"])
+# print("Hit@5:", hit)
+
+# print(query_tokens)
+# print(results)
+
+# for chunk_id, score in results:
+#     source = docmap[chunk_id]
+#     print(
+#         score,
+#         source["file_path"],
+#         source["first_character_index"],
+#         source["last_character_index"]
+#     )
+#     print()
+
+def recall_at_k(questions, index, docmap, k=5):
+    hits = 0
+
+    for question in questions:
+        if hit_at_k(question, index, docmap, k=k):
+            hits += 1
+
+    return hits / len(questions)
+
+code_recall = recall_at_k(code_questions, index, docmap, k=5)
+docs_recall = recall_at_k(docs_questions, index, docmap, k=5)
+
+# print(code_recall)
+# print(docs_recall)
+
+# question = code_questions[0]
+def reference_is_covered(question, docmap):
+    reference = question["sources"][0]
+
+    ref_file = reference["file_path"]
+    ref_start = reference["first_character_index"]
+    ref_end = reference["last_character_index"]
+
+    for source in docmap.values():
+        if source["file_path"] == ref_file:
+            if ranges_overlap(ref_start, ref_end, source["first_character_index"], source["last_character_index"]):
+                return True
+                # print(source["first_character_index"])
+                # print(source["last_character_index"])
+                # print(source["content"])
+    return False
+
+hits = 0
+covered_misses = 0
+uncovered_misses = 0
+
+# for question in docs_questions:
+#     if hit_at_k(question, index, docmap, k=100):
+#         hits += 1
+#     elif reference_is_covered(question, docmap):
+#         covered_misses += 1
+#     else:
+#         uncovered_misses += 1
+
+
+# print("Hits:", hits)
+# print("Covered misses:", covered_misses)
+# print("Uncovered misses:", uncovered_misses)
+# print("Total:", hits + covered_misses + uncovered_misses)
+
+
+for question in code_questions:
+    if (not hit_at_k(question, index, docmap, k=5)
+        and reference_is_covered(question, docmap)):
+        break
+
+print("Question:", question["question"])
+
+reference = question["sources"][0]
+
+ref_file = reference["file_path"]
+ref_start = reference["first_character_index"]
+ref_end = reference["last_character_index"]
+query_tokens = tokenize_text(question["question"])
+results = index.search(query_tokens, k=1000)
+# for rank, (chunk_id, score) in enumerate(results, start=1):
+#     source = docmap[chunk_id]
+
+#     if source["file_path"] == ref_file:
+#         if ranges_overlap(ref_start, ref_end, source["first_character_index"], source["last_character_index"]):
+#             print("Relevant rank:", rank)
+
+#             print("Score:", score)
+
+#             print(
+
+#                 "Range:",
+
+#                 source["first_character_index"],
+
+#                 source["last_character_index"],
+
+#             )
+
+#             print("Content:")
+
+#             print(source["content"])
+#             break
+
+print("Query tokens:")
+print(query_tokens)
+
+from src.indexer import tf_idf, vector_magnitude, dot_product, cosine_similarity
+
+
+# for chunk_id, source in docmap.items():
+#     if (
+#         source["file_path"] == ref_file
+#         and ranges_overlap(
+#             ref_start,
+#             ref_end,
+#             source["first_character_index"],
+#             source["last_character_index"],
+#         )
+#     ):
+#         chunk_tokens = tokenize_text(source["content"])
+
+#         doc_vector = tf_idf(chunk_tokens, index.idf)
+#         query_vector = tf_idf(query_tokens, index.idf)
+
+#         print("Query magnitude:", vector_magnitude(query_vector))
+#         print("Document magnitude:", vector_magnitude(doc_vector))
+#         print("Dot product:", dot_product(query_vector, doc_vector))
+#         print("Cosine:", cosine_similarity(query_vector, doc_vector))
+
+#         print("Chunk token count:", len(chunk_tokens))
+#         print("Unique chunk tokens:", len(set(chunk_tokens)))
+
+#         # print("\nShared tokens:")
+#         # print(set(query_tokens) & set(chunk_tokens))
+#         break
+
+# query_vector = tf_idf(query_tokens, index.idf)
+
+# top_chunk_id, top_score = results[0]
+
+# top_source = docmap[top_chunk_id]
+# top_tokens = corpus[top_chunk_id]
+
+# top_vector = tf_idf(top_tokens, index.idf)
+
+# print("Top result:", top_chunk_id)
+# print("Score:", top_score)
+
+# print("Document magnitude:", vector_magnitude(top_vector))
+# print("Dot product:", dot_product(query_vector, top_vector))
+
+# print("Chunk token count:", len(top_tokens))
+# print("Unique chunk tokens:", len(set(top_tokens)))
+
+# print(
+#     "Shared tokens:",
+#     set(query_tokens) & set(top_tokens)
+# )
+
+# print("\nContent:")
+# print(top_source["content"])
+
+
+def relevant_rank(question, index, docmap, k=1000):
+    reference = question["sources"][0]
+    ref_file = reference["file_path"]
+    ref_start = reference["first_character_index"]
+    ref_end = reference["last_character_index"]
+    query_tokens = tokenize_text(question["question"])
+    results = index.search(query_tokens, k=k)
+    for rank, (chunk_id, score) in enumerate(results, start=1):
+        source = docmap[chunk_id]
+
+        if source["file_path"] == ref_file:
+            if ranges_overlap(ref_start, ref_end, source["first_character_index"], source["last_character_index"]):
+                return rank
+    return None
+
+covered_miss_ranks = []
+
+for question in docs_questions:
+    if (
+        not hit_at_k(question, index, docmap, k=5)
+        and reference_is_covered(question, docmap)
+    ):
+        rank = relevant_rank(question, index, docmap, k=1000)
+        covered_miss_ranks.append(rank)
+
+buckets = {
+    "6-10": 0,
+    "11-20": 0,
+    "21-50": 0,
+    "51-100": 0,
+    "101-1000": 0,
+    "None": 0,
+}
+
+for rank in covered_miss_ranks:
+    if rank is None:
+        buckets["None"] += 1
+    elif rank <= 10:
+        buckets["6-10"] += 1
+    elif rank <= 20:
+        buckets["11-20"] += 1
+    elif rank <= 50:
+        buckets["21-50"] += 1
+    elif rank <= 100:
+        buckets["51-100"] += 1
+    elif rank <= 1000:
+        buckets["101-1000"] += 1
+
+print(buckets)
+
+print("Total:", sum(buckets.values()))
