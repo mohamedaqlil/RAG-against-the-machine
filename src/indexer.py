@@ -1,5 +1,6 @@
 import math
 import re
+import json
 from collections import defaultdict
 
 from nltk.stem import PorterStemmer
@@ -37,6 +38,110 @@ class InvertedIndex:
 
         cosine_scores = sorted(cosine_scores.items(), key=lambda item: item[1], reverse=True)
         return cosine_scores[:k]
+
+
+class BM25Index:
+    def __init__(self, k1=0.8, b=1):
+        self.idf = {}
+        self.inverted_index = defaultdict(dict)
+        self.doc_lengths = defaultdict(int)
+        self.avgdl = 0
+        self.k1 = k1
+        self.b = b
+
+    def build(self, corpus):
+        self.idf = bm25_inverse_document_frequency(corpus)
+
+        for doc_id, tokens in corpus.items():
+            counts = term_counts(tokens)
+            self.doc_lengths[doc_id] = len(tokens)
+            for token, count in counts.items():
+                self.inverted_index[token][doc_id] = count
+        self.avgdl = sum([len(tokens) for tokens in corpus.values()]) / len(corpus)
+
+    def search(self, query_tokens, k=5):
+        scores = defaultdict(float)
+        for token in query_tokens:
+            for doc_id, frequency in self.inverted_index[token].items():
+                idf = self.idf[token]
+                doc_length = self.doc_lengths[doc_id]
+                avgdl = self.avgdl
+                length_factor = 1 - self.b + (self.b * (doc_length / avgdl))
+                denominator = frequency + (self.k1 * length_factor)
+                numerator = frequency * (self.k1 + 1)
+                scores[doc_id] += idf * (numerator / denominator)
+        scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+
+        return scores[:k]
+
+class BM25ContextIndex:
+    def __init__(self, k1=0.8, b=1):
+        self.idf = {}
+        self.inverted_index = defaultdict(dict)
+        self.doc_lengths = defaultdict(int)
+        self.avgdl = 0
+        self.k1 = k1
+        self.b = b
+
+    def build(self, search_corpus, body_corpus):
+        if search_corpus.keys() != body_corpus.keys():
+            raise ValueError("search_corpus and body_corpus must contain the same document IDs")
+
+        if not body_corpus:
+            raise ValueError("body_corpus is empty")
+
+        self.inverted_index = defaultdict(dict)
+        self.doc_lengths = defaultdict(int)
+        self.idf = bm25_inverse_document_frequency(body_corpus)
+
+        for doc_id, tokens in search_corpus.items():
+            counts = term_counts(tokens)
+            self.doc_lengths[doc_id] = len(body_corpus[doc_id])
+            for token, count in counts.items():
+                self.inverted_index[token][doc_id] = count
+        self.avgdl = sum(len(tokens) for tokens in body_corpus.values()) / len(body_corpus)
+
+    def search(self, query_tokens, k=5):
+        scores = defaultdict(float)
+        for token in query_tokens:
+            for doc_id, frequency in self.inverted_index.get(token, {}).items():
+                idf = self.idf.get(token, 0.0)
+                doc_length = self.doc_lengths[doc_id]
+                avgdl = self.avgdl
+                length_factor = 1 - self.b + (self.b * (doc_length / avgdl))
+                denominator = frequency + (self.k1 * length_factor)
+                numerator = frequency * (self.k1 + 1)
+                scores[doc_id] += idf * (numerator / denominator)
+        scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+
+        return scores[:k]
+
+    def save(self, path):
+        data = {
+            "k1": self.k1,
+            "b": self.b,
+            "avgdl": self.avgdl,
+            "idf": self.idf,
+            "doc_lengths": dict(self.doc_lengths),
+            "inverted_index": dict(self.inverted_index)
+        }
+        with open(path, mode="w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        index = cls(k1=data["k1"], b=data["b"])
+
+        # restore:
+        index.avgdl = data["avgdl"]
+        index.idf = data["idf"]
+        index.doc_lengths = data["doc_lengths"]
+        index.inverted_index = data["inverted_index"]
+
+        return index
 
 
 def load_stopwords():
@@ -119,7 +224,8 @@ def term_frequency(text_tokens):
     term_frequencies = defaultdict(float)
     term_counter = term_counts(text_tokens)
     for token, count in term_counter.items():
-        term_frequencies[token] = count / len(text_tokens)
+        term_frequencies[token] = 1 + math.log(count)
+        # term_frequencies[token] = count / len(text_tokens)
 
     return dict(term_frequencies)
 
@@ -136,6 +242,14 @@ def inverse_document_frequency(corpus):
     l = len(corpus)
     for term, document_count in df.items():
             idf[term] = math.log(l/document_count)
+    return dict(idf)
+
+def bm25_inverse_document_frequency(corpus):
+    idf: dict = defaultdict(float)
+    df = document_frequency(corpus)
+    nb_docs = len(corpus)
+    for term, document_count in df.items():
+            idf[term] = math.log(1 + ((nb_docs - document_count + 0.5) / (document_count + 0.5)))
     return dict(idf)
 
 def tf_idf(token_texts, idf):
