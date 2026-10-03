@@ -1,0 +1,36 @@
+{
+  "search_results": [
+    {
+      "question_id": "43ebfaef-3eef-42f7-ac60-3ce0f04705ed",
+      "question": "What is the current limitation when using MLP speculators for speculative decoding in vLLM?",
+      "retrieved_sources": [
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 3949,
+          "last_character_index": 5423
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 0,
+          "last_character_index": 620
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 10670,
+          "last_character_index": 12611
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/getting_started/installation/aws_neuron.md",
+          "first_character_index": 6931,
+          "last_character_index": 7064
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 8166,
+          "last_character_index": 8885
+        }
+      ]
+    }
+  ],
+  "k": 5
+}

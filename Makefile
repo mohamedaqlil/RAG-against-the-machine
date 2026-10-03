@@ -3,15 +3,15 @@ install:
 	uv sync
 
 run:
-	uv run python -m src <command>
+	uv run python -m src $(ARGS)
 
 debug:
-	uv run python -pdb -m src <command>
+	uv run python -m pdb -m src $(ARGS)
 
 clean:
-	rm -rf  __pycache__
-	rm -rf *.mypy_cache
+	find src -type d -name "__pycache__" -prune -exec rm -rf {} +
+	rm -rf .mypy_cache .pytest_cache
 
 lint:
-	flake8 .
-	mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run flake8 .
+	uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs

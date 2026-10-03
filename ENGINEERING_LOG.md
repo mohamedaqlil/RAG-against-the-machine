@@ -35,3 +35,12 @@ docmap
                        BM25 index
                        k1 = 0.8
                        b  = 1.0
+
+chunking.py     → discover + chunk files
+indexer.py      → tokenize + BM25 + build/persist index
+retrieval.py    → single/batch search
+augmentation.py → context/prompt preparation
+generation.py   → Qwen + single/batch answering
+evaluation.py   → IoU + Recall@k
+io.py           → JSON/Pydantic file I/O
+models.py       → shared Pydantic models

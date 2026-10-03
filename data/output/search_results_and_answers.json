@@ -1,0 +1,27 @@
+{
+  "search_results": [
+    {
+      "question_id": "eb66f6ae-b7a2-4b5a-9e25-3916558abbd5",
+      "question": "What is the current limitation when using MLP speculators for speculative decoding in vLLM?",
+      "retrieved_sources": [
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 3949,
+          "last_character_index": 5423
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 0,
+          "last_character_index": 620
+        },
+        {
+          "file_path": "data/raw/vllm-0.10.1/docs/features/spec_decode.md",
+          "first_character_index": 10670,
+          "last_character_index": 12611
+        }
+      ],
+      "answer": "The current limitation when using MLP speculators for speculative decoding in vLLM is that it requires running the model without tensor parallelism. This limitation will be addressed in a future release."
+    }
+  ],
+  "k": 3
+}

@@ -1,0 +1,10 @@
+[flake8]
+exclude =
+    .git,
+    .venv,
+    data,
+	benchmark_discovery.py,
+	chunkingv0.py,
+	indexerv0.py,
+	test.py,
+	tests,

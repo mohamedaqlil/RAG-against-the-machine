@@ -54,5 +54,9 @@ if __name__ == "__main__":
     print(f"   - Execution Time:   {time_with:.6f} seconds")
 
     print(f"\n3. Difference / Delta:")
-    print(f"   - Extra Files Caught without filter: {len(files_without) - len(files_with)}")
-    print(f"   - Time Difference:                  {abs(time_without - time_with):.6f} seconds")
+    print(
+        f"   - Extra Files Caught without filter: {len(files_without) - len(files_with)}"
+    )
+    print(
+        f"   - Time Difference:                  {abs(time_without - time_with):.6f} seconds"
+    )

@@ -3,11 +3,34 @@ name = "rag-against-the-machine"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
+    "accelerate>=1.15.0",
+    "black>=26.5.1",
     "fire>=0.7.1",
     "nltk>=3.10.3",
     "pydantic>=2.13.5",
     "pytest>=9.1.1",
+    "torch>=2.14.0",
     "tqdm>=4.70.1",
+    "transformers>=5.17.0",
+]
+
+[dependency-groups]
+dev = [
+    "flake8>=7.4.1",
+    "mypy>=2.4.0",
+    "pydocstyle>=6.3.0",
+    "types-tqdm>=4.70.0.20260906",
+]
+
+[tool.mypy]
+exclude = [
+    "^\\.venv/",
+    "^data/",
+	"^benchmark_discovery.py",
+	"^chunkingv0.py",
+	"^indexerv0.py",
+	"^test.py",
+	"^tests",
 ]

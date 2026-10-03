@@ -8,12 +8,14 @@ from tqdm import tqdm
 
 import fire
 
+
 class Calculator(object):
-  """A simple calculator class."""
+    """A simple calculator class."""
 
-  def double(self, number=2):
-    """double number"""
-    return 2 * number
+    def double(self, number=2):
+        """double number"""
+        return 2 * number
 
-if __name__ == '__main__':
-  fire.Fire(Calculator)
+
+if __name__ == "__main__":
+    fire.Fire(Calculator)
